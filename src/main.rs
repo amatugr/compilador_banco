@@ -3,7 +3,7 @@ use std::env::{args, current_dir};
 use std::fs::{create_dir, create_dir_all, read_dir, read_to_string, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{exit, Command, Stdio};
+use std::process::{exit, Command};
 
 use chrono::prelude::*;
 use human_panic::setup_panic;
@@ -67,17 +67,19 @@ fn main() {
                 // Paint::red("File does not exist")
             );
             continue;
-        } else if DateTime::<Utc>::from(path.metadata().unwrap().modified().unwrap())
-            > DateTime::<Utc>::from_utc(
-                NaiveDateTime::parse_from_str(
-                    &times
-                        .get(path.canonicalize().unwrap().to_str().unwrap())
-                        .unwrap_or(&(String::from("0"))),
-                    "%s",
-                )
-                .unwrap(),
-                Utc,
+        } else if changed(&path, &times)
+            || !PathBuf::from(
+                html_dir
+                    .join(path.strip_prefix(&src_dir).unwrap())
+                    .to_str()
+                    .unwrap()
+                    .rsplit_once(".")
+                    .unwrap()
+                    .0
+                    .to_owned()
+                    + ".html",
             )
+            .exists()
         {
             println!(
                 "{} ./{}: Compiling LaTeX to HTML",
@@ -100,16 +102,6 @@ fn main() {
                     .unwrap_or(Path::new("/")),
             )
             .unwrap();
-            println!(
-                "{}",
-                html_dir
-                    .join(path.strip_prefix(&src_dir).unwrap())
-                    .to_str()
-                    .unwrap()
-                    .rsplit_once(".")
-                    .unwrap()
-                    .0
-            );
             let mut cmd = Command::new("pandoc")
                 .args([
                     &path.to_str().unwrap(),
@@ -134,7 +126,7 @@ fn main() {
             cmd.wait().expect("Command wasn't running");
             #[cfg(not(target_os = "windows"))]
             {
-                sp.message("Successfully compiled \u{2705}".to_owned());
+                sp.message("Successfully compiled \u{2705}\n".to_owned());
                 std::thread::sleep(std::time::Duration::from_millis(90)); // Give time to change message
                 sp.stop();
             }
@@ -238,4 +230,18 @@ fn save_times(dir: &PathBuf, map: HashMap<String, String>) {
             );
         };
     }
+}
+
+fn changed(path: &PathBuf, times: &HashMap<String, String>) -> bool {
+    DateTime::<Utc>::from(path.metadata().unwrap().modified().unwrap())
+        > DateTime::<Utc>::from_utc(
+            NaiveDateTime::parse_from_str(
+                times
+                    .get(path.canonicalize().unwrap().to_str().unwrap())
+                    .unwrap_or(&(String::from("0"))),
+                "%s",
+            )
+            .unwrap(),
+            Utc,
+        )
 }
